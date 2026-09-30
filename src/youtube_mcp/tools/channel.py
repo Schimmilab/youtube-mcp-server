@@ -175,6 +175,10 @@ def youtube_get_video(video_id: str) -> dict:
     summary["publish_at"] = status.get("publishAt")
     summary["license"] = status.get("license")
     summary["embeddable"] = status.get("embeddable")
+    # ⚠️ videos.list liefert containsSyntheticMedia NICHT zurueck (am 30.09.2026 an
+    # 24 Videos beider Kanaele und an einem frisch per API gelabelten Testvideo
+    # geprueft: immer None, obwohl Studio "Ja" zeigte). None heisst hier "unbekannt",
+    # nicht "kein KI-Label". Belastbar ist nur die Antwort von upload/update.
     summary["contains_synthetic_media"] = status.get("containsSyntheticMedia")
     summary["topic_categories"] = video.get("topicDetails", {}).get("topicCategories", [])
 
