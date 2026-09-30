@@ -1,5 +1,9 @@
 """Channel and video read tools."""
 
+import os
+
+from googleapiclient.http import MediaFileUpload
+
 from youtube_mcp.server import auth, mcp, quota
 from youtube_mcp.utils.formatting import format_video_summary
 
@@ -171,6 +175,118 @@ def youtube_get_video(video_id: str) -> dict:
     summary["publish_at"] = status.get("publishAt")
     summary["license"] = status.get("license")
     summary["embeddable"] = status.get("embeddable")
+    summary["contains_synthetic_media"] = status.get("containsSyntheticMedia")
     summary["topic_categories"] = video.get("topicDetails", {}).get("topicCategories", [])
 
     return summary
+
+
+def _format_keywords(keywords: list[str]) -> str:
+    """YouTube erwartet Kanal-Keywords als einen String; Mehrwort-Begriffe in Anfuehrungszeichen."""
+    return " ".join(f'"{k}"' if " " in k else k for k in keywords if k.strip())
+
+
+def _own_channel_branding(youtube) -> tuple[str, dict] | dict:
+    quota.consume("list")
+    resp = youtube.channels().list(part="brandingSettings", mine=True).execute()
+    items = resp.get("items", [])
+    if not items:
+        return {"error": "No channel found for the authenticated account"}
+    return items[0]["id"], items[0].get("brandingSettings", {})
+
+
+@mcp.tool()
+def youtube_update_channel(
+    description: str | None = None,
+    keywords: list[str] | None = None,
+    unsubscribed_trailer: str | None = None,
+    country: str | None = None,
+    default_language: str | None = None,
+) -> dict:
+    """Update branding of the authenticated channel (description, keywords, trailer).
+
+    Only passed fields change. channels.update replaces the whole brandingSettings
+    block, so the current settings are read first and merged. Profile picture and
+    end screens are NOT available in the YouTube Data API.
+
+    Args:
+        description: Channel description (max 1,000 characters)
+        keywords: Channel keywords (multi-word keywords are quoted automatically)
+        unsubscribed_trailer: Video ID of the trailer shown to non-subscribers ("" removes it)
+        country: ISO 3166-1 alpha-2 country code, e.g. "DE"
+        default_language: Language of the channel's title/description, e.g. "de"
+    """
+    youtube = auth.build_youtube_service()
+    own = _own_channel_branding(youtube)
+    if isinstance(own, dict):
+        return own
+    channel_id, branding = own
+
+    ch = dict(branding.get("channel", {}))
+    if description is not None:
+        if len(description) > 1000:
+            return {"error": f"Description has {len(description)} characters, max 1,000"}
+        ch["description"] = description
+    if keywords is not None:
+        ch["keywords"] = _format_keywords(keywords)
+    if unsubscribed_trailer is not None:
+        if unsubscribed_trailer:
+            ch["unsubscribedTrailer"] = unsubscribed_trailer
+        else:
+            ch.pop("unsubscribedTrailer", None)
+    if country is not None:
+        ch["country"] = country
+    if default_language is not None:
+        ch["defaultLanguage"] = default_language
+
+    new_branding = dict(branding)
+    new_branding["channel"] = ch
+
+    quota.consume("update")
+    resp = youtube.channels().update(
+        part="brandingSettings", body={"id": channel_id, "brandingSettings": new_branding}
+    ).execute()
+    out = resp.get("brandingSettings", {}).get("channel", {})
+    return {
+        "channel_id": channel_id,
+        "description": out.get("description"),
+        "keywords": out.get("keywords"),
+        "unsubscribed_trailer": out.get("unsubscribedTrailer"),
+        "country": out.get("country"),
+        "default_language": out.get("defaultLanguage"),
+        "updated": True,
+    }
+
+
+@mcp.tool()
+def youtube_set_channel_banner(file_path: str) -> dict:
+    """Upload a new channel banner (recommended 2560x1440 px, max 6 MB, JPEG/PNG).
+
+    Two steps: channelBanners.insert returns a URL, which is then written into
+    brandingSettings.image.bannerExternalUrl (other branding settings are kept).
+
+    Args:
+        file_path: Absolute path to the banner image
+    """
+    if not os.path.exists(file_path):
+        return {"error": f"File not found: {file_path}"}
+
+    youtube = auth.build_youtube_service()
+    own = _own_channel_branding(youtube)
+    if isinstance(own, dict):
+        return own
+    channel_id, branding = own
+
+    quota.consume("insert")
+    banner = youtube.channelBanners().insert(media_body=MediaFileUpload(file_path)).execute()
+    url = banner.get("url")
+    if not url:
+        return {"error": "channelBanners.insert returned no URL", "response": banner}
+
+    new_branding = dict(branding)
+    new_branding["image"] = {**branding.get("image", {}), "bannerExternalUrl": url}
+    quota.consume("update")
+    youtube.channels().update(
+        part="brandingSettings", body={"id": channel_id, "brandingSettings": new_branding}
+    ).execute()
+    return {"channel_id": channel_id, "banner_url": url, "updated": True}

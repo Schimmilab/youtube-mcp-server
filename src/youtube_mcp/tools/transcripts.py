@@ -5,6 +5,10 @@ Uses two strategies:
 - youtube-transcript-api library for public/competitor videos (scraping, no auth needed)
 """
 
+import os
+
+from googleapiclient.http import MediaFileUpload
+
 from youtube_mcp.server import auth, mcp, quota
 
 
@@ -36,6 +40,78 @@ def youtube_list_captions(video_id: str) -> dict:
         })
 
     return {"video_id": video_id, "tracks": tracks}
+
+
+CAPTION_EXTENSIONS = {".srt", ".vtt", ".sbv", ".scc", ".ttml"}
+
+
+@mcp.tool()
+def youtube_upload_caption(
+    video_id: str,
+    file_path: str,
+    language: str = "de",
+    name: str = "",
+    is_draft: bool = False,
+    replace_existing: bool = False,
+) -> dict:
+    """Upload a caption/subtitle file (SRT, VTT, ...) to a video you own.
+
+    Costs 400 quota units (insert) or 450 (update when replacing).
+
+    Args:
+        video_id: YouTube video ID
+        file_path: Absolute path to the caption file (.srt, .vtt, .sbv, .scc, .ttml)
+        language: BCP-47 language code of the track, e.g. "de", "en"
+        name: Track name shown to viewers (empty = default track for the language)
+        is_draft: If True the track is uploaded but not shown to viewers
+        replace_existing: If a track with the same language AND name exists, replace
+            its content instead of adding a second track
+    """
+    if not os.path.exists(file_path):
+        return {"error": f"File not found: {file_path}"}
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext not in CAPTION_EXTENSIONS:
+        return {"error": f"Unsupported caption format {ext!r}, expected one of {sorted(CAPTION_EXTENSIONS)}"}
+
+    youtube = auth.build_youtube_service()
+    media = MediaFileUpload(file_path, mimetype="application/octet-stream", resumable=False)
+
+    existing_id = None
+    if replace_existing:
+        quota.consume("list")
+        listing = youtube.captions().list(part="snippet", videoId=video_id).execute()
+        for item in listing.get("items", []):
+            sn = item.get("snippet", {})
+            if sn.get("language") == language and (sn.get("name") or "") == name and sn.get("trackKind") != "asr":
+                existing_id = item["id"]
+                break
+
+    if existing_id:
+        quota.consume("caption_update")
+        response = youtube.captions().update(
+            part="snippet",
+            body={"id": existing_id, "snippet": {"isDraft": is_draft}},
+            media_body=media,
+        ).execute()
+        action = "replaced"
+    else:
+        quota.consume("caption_insert")
+        response = youtube.captions().insert(
+            part="snippet",
+            body={"snippet": {"videoId": video_id, "language": language, "name": name, "isDraft": is_draft}},
+            media_body=media,
+        ).execute()
+        action = "inserted"
+
+    sn = response.get("snippet", {})
+    return {
+        "caption_id": response.get("id"),
+        "video_id": video_id,
+        "language": sn.get("language", language),
+        "name": sn.get("name", name),
+        "is_draft": sn.get("isDraft", is_draft),
+        "action": action,
+    }
 
 
 @mcp.tool()

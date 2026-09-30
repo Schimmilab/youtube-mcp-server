@@ -6,6 +6,36 @@ from googleapiclient.http import MediaFileUpload
 
 from youtube_mcp.server import auth, mcp, quota
 
+# Schreibbare Felder des status-Parts. videos.update ersetzt den KOMPLETTEN
+# status-Block: was hier nicht mitgeschickt wird, setzt YouTube auf den Default
+# zurueck. Vorher gingen dabei embeddable und ein geplanter publishAt verloren,
+# sobald nur privacy_status geaendert wurde.
+WRITABLE_STATUS_FIELDS = (
+    "privacyStatus",
+    "publishAt",
+    "embeddable",
+    "license",
+    "publicStatsViewable",
+    "selfDeclaredMadeForKids",
+    "containsSyntheticMedia",
+)
+
+
+def _merge_status(current: dict, overrides: dict) -> dict | str:
+    """Aktuellen status-Block uebernehmen und nur die uebergebenen Felder aendern.
+
+    Gibt einen Fehlertext zurueck, wenn die Kombination ungueltig ist.
+    """
+    merged = {k: current[k] for k in WRITABLE_STATUS_FIELDS if k in current}
+    merged.update({k: v for k, v in overrides.items() if v is not None})
+    merged.setdefault("privacyStatus", "private")
+    if merged["privacyStatus"] != "private":
+        if overrides.get("publishAt"):
+            return "publish_at requires privacy_status='private'"
+        # Ein Termin gilt nur fuer private Videos; beim Veroeffentlichen faellt er weg.
+        merged.pop("publishAt", None)
+    return merged
+
 
 @mcp.tool()
 def youtube_upload_video(
@@ -16,6 +46,7 @@ def youtube_upload_video(
     category_id: str = "22",
     privacy_status: str = "private",
     publish_at: str | None = None,
+    contains_synthetic_media: bool | None = None,
 ) -> dict:
     """Upload a video to YouTube.
 
@@ -29,6 +60,8 @@ def youtube_upload_video(
         category_id: YouTube category ID (default "22" = People & Blogs)
         privacy_status: "private", "public", or "unlisted"
         publish_at: ISO 8601 datetime to schedule publishing (requires privacy_status="private")
+        contains_synthetic_media: YouTube's "altered or synthetic content" disclosure
+            (AI label, status.containsSyntheticMedia). True for AI music, AI avatars, etc.
     """
     if not os.path.exists(file_path):
         return {"error": f"File not found: {file_path}"}
@@ -51,6 +84,8 @@ def youtube_upload_video(
 
     if publish_at and privacy_status == "private":
         body["status"]["publishAt"] = publish_at
+    if contains_synthetic_media is not None:
+        body["status"]["containsSyntheticMedia"] = contains_synthetic_media
 
     media = MediaFileUpload(file_path, resumable=True)
 
@@ -67,6 +102,7 @@ def youtube_upload_video(
         "title": response["snippet"]["title"],
         "privacy": response["status"]["privacyStatus"],
         "publish_at": response["status"].get("publishAt"),
+        "contains_synthetic_media": response["status"].get("containsSyntheticMedia"),
         "url": f"https://www.youtube.com/watch?v={response['id']}",
         "quota_cost": 1600,
     }
@@ -82,6 +118,8 @@ def youtube_update_video(
     privacy_status: str | None = None,
     publish_at: str | None = None,
     made_for_kids: bool | None = None,
+    contains_synthetic_media: bool | None = None,
+    embeddable: bool | None = None,
 ) -> dict:
     """Update metadata for an existing video.
 
@@ -96,6 +134,11 @@ def youtube_update_video(
         privacy_status: "private", "public", or "unlisted"
         publish_at: ISO 8601 datetime to schedule publishing (requires privacy_status="private" — either passed explicitly here or already set on the video).
         made_for_kids: COPPA self-declaration. Pass True/False to set selfDeclaredMadeForKids. Videos that were uploaded without this declaration cannot be published until it is set.
+        contains_synthetic_media: AI label (status.containsSyntheticMedia), True/False.
+        embeddable: Allow embedding on other sites.
+
+    Status fields that are not passed keep their current value (embeddable,
+    publishAt, license, ...). Changing privacy away from "private" drops publishAt.
     """
     quota.consume("list")
     youtube = auth.build_youtube_service()
@@ -122,15 +165,17 @@ def youtube_update_video(
 
     body = {"id": video_id, "snippet": snippet}
 
-    if privacy_status is not None or publish_at is not None or made_for_kids is not None:
-        effective_privacy = privacy_status or status.get("privacyStatus", "private")
-        new_status = {"privacyStatus": effective_privacy}
-        if publish_at:
-            if effective_privacy != "private":
-                return {"error": "publish_at requires privacy_status='private'"}
-            new_status["publishAt"] = publish_at
-        if made_for_kids is not None:
-            new_status["selfDeclaredMadeForKids"] = made_for_kids
+    status_overrides = {
+        "privacyStatus": privacy_status,
+        "publishAt": publish_at,
+        "selfDeclaredMadeForKids": made_for_kids,
+        "containsSyntheticMedia": contains_synthetic_media,
+        "embeddable": embeddable,
+    }
+    if any(v is not None for v in status_overrides.values()):
+        new_status = _merge_status(status, status_overrides)
+        if isinstance(new_status, str):
+            return {"error": new_status}
         body["status"] = new_status
         parts = "snippet,status"
     else:
@@ -148,6 +193,8 @@ def youtube_update_video(
         "title": response["snippet"]["title"],
         "privacy": response_status.get("privacyStatus"),
         "publish_at": response_status.get("publishAt"),
+        "embeddable": response_status.get("embeddable"),
+        "contains_synthetic_media": response_status.get("containsSyntheticMedia"),
         "updated": True,
     }
 
