@@ -16,7 +16,10 @@ from googleapiclient.discovery import build
 # All scopes we need across all phases
 SCOPES = [
     "https://www.googleapis.com/auth/youtube.readonly",
-    "https://www.googleapis.com/auth/youtube",
+    # Bewusst OHNE den Vollzugriff "auth/youtube": youtube.force-ssl deckt alle
+    # Schreibzugriffe (Metadaten, Thumbnail, Kommentare, Playlists) ab. Die
+    # vorhandenen Tokens beider Kanaele sind ohne ihn ausgestellt; mit ihm
+    # wuerde _has_required_scopes() sie verwerfen und eine Neuanmeldung erzwingen.
     "https://www.googleapis.com/auth/youtube.upload",
     # Required by the comment endpoints (commentThreads.list/insert,
     # comments.insert). Without it, youtube_list_comments / youtube_post_comment
