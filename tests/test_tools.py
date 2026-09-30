@@ -65,6 +65,26 @@ class TestGetVideo:
 
     @patch("youtube_mcp.tools.channel.auth")
     @patch("youtube_mcp.tools.channel.quota")
+    def test_get_video_returns_full_description(self, mock_quota, mock_auth):
+        """Anschluss, nicht nur Logik: get_video darf die Beschreibung NICHT kuerzen.
+
+        Anlass 30.09.2026: Der Arcapedia-Link am Ende der F13-Beschreibung war
+        ueber das MCP unsichtbar, weil nach 500 Zeichen still abgeschnitten wurde.
+        """
+        from youtube_mcp.tools.channel import youtube_get_video
+
+        mock_yt = _make_mock_youtube()
+        mock_auth.build_youtube_service.return_value = mock_yt
+        video = _make_video_resource(video_id="lang")
+        video["snippet"]["description"] = "x" * 1200 + "\nhttps://arcapedia.example/Artikel"
+        mock_yt.videos().list().execute.return_value = {"items": [video]}
+
+        result = youtube_get_video("lang")
+        assert result["description"].endswith("https://arcapedia.example/Artikel")
+        assert result["description_truncated"] is False
+
+    @patch("youtube_mcp.tools.channel.auth")
+    @patch("youtube_mcp.tools.channel.quota")
     def test_get_video_not_found(self, mock_quota, mock_auth):
         from youtube_mcp.tools.channel import youtube_get_video
 

@@ -43,7 +43,7 @@ def youtube_get_channel(
         "id": ch["id"],
         "title": snippet.get("title"),
         "handle": snippet.get("customUrl"),
-        "description": snippet.get("description", "")[:500],
+        "description": snippet.get("description", ""),
         "published_at": snippet.get("publishedAt"),
         "subscribers": int(stats.get("subscriberCount", 0)),
         "total_views": int(stats.get("viewCount", 0)),
@@ -163,7 +163,7 @@ def youtube_get_video(video_id: str) -> dict:
         return {"error": f"Video not found: {video_id}"}
 
     video = items[0]
-    summary = format_video_summary(video)
+    summary = format_video_summary(video, max_description=None)
 
     # Add extra detail fields not in the summary
     status = video.get("status", {})

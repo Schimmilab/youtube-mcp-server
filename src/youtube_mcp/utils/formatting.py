@@ -39,8 +39,18 @@ def format_count(n: int | str) -> str:
     return str(n)
 
 
-def format_video_summary(video: dict) -> dict:
-    """Extract and format key fields from a YouTube Data API video resource."""
+LIST_DESCRIPTION_LIMIT = 500
+
+
+def format_video_summary(video: dict, max_description: int | None = LIST_DESCRIPTION_LIMIT) -> dict:
+    """Extract and format key fields from a YouTube Data API video resource.
+
+    ``max_description`` kuerzt die Beschreibung fuer Listen/Suchen (Kontext sparen).
+    ``None`` liefert sie vollstaendig — so ruft ``youtube_get_video`` auf.
+    Wird gekuerzt, steht das in ``description_truncated`` und ``description_length``:
+    Die Kuerzung war vorher stumm, und ein Link am Ende der Beschreibung sah aus,
+    als fehle er (Arcanara F13, 30.09.2026).
+    """
     snippet = video.get("snippet", {})
     stats = video.get("statistics", {})
     content = video.get("contentDetails", {})
@@ -54,11 +64,20 @@ def format_video_summary(video: dict) -> dict:
         "views": int(stats.get("viewCount", 0)),
         "likes": int(stats.get("likeCount", 0)),
         "comments": int(stats.get("commentCount", 0)),
-        "description": snippet.get("description", "")[:500],
+        **_description_fields(snippet.get("description", ""), max_description),
         "tags": snippet.get("tags", []),
         "thumbnail": snippet.get("thumbnails", {}).get("high", {}).get("url"),
         "is_short": _is_likely_short(content.get("duration", "")),
     }
+
+
+def _description_fields(description: str, limit: int | None) -> dict:
+    """Beschreibung plus ehrliche Angabe, ob gekuerzt wurde."""
+    if limit is None or len(description) <= limit:
+        return {"description": description, "description_truncated": False,
+                "description_length": len(description)}
+    return {"description": description[:limit], "description_truncated": True,
+            "description_length": len(description)}
 
 
 def _is_likely_short(iso_duration: str) -> bool:

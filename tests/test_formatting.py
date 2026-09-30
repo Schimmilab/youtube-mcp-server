@@ -128,3 +128,28 @@ class TestFormatVideoSummary:
         assert result["views"] == 0
         assert result["likes"] == 0
         assert result["title"] is None
+
+
+class TestDescriptionTruncation:
+    """Die Kuerzung darf nie mehr still passieren (F13-Link, 30.09.2026)."""
+
+    def _video(self, desc):
+        return {"id": "v", "snippet": {"description": desc}, "statistics": {}, "contentDetails": {}}
+
+    def test_list_default_truncates_and_says_so(self):
+        desc = "x" * 700 + "https://arcapedia.example/link"
+        r = format_video_summary(self._video(desc))
+        assert len(r["description"]) == 500
+        assert r["description_truncated"] is True
+        assert r["description_length"] == len(desc)
+
+    def test_full_description_keeps_link_at_end(self):
+        desc = "x" * 1200 + "https://arcapedia.example/link"
+        r = format_video_summary(self._video(desc), max_description=None)
+        assert r["description"].endswith("https://arcapedia.example/link")
+        assert r["description_truncated"] is False
+
+    def test_short_description_not_flagged(self):
+        r = format_video_summary(self._video("kurz"))
+        assert r["description"] == "kurz"
+        assert r["description_truncated"] is False
