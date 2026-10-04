@@ -65,11 +65,14 @@ def youtube_list_videos(
     playlist_id: str | None = None,
     mine: bool = False,
     max_results: int = 20,
+    details: bool = False,
 ) -> dict:
     """List videos from a channel or playlist.
 
-    For a channel, uses the channel's uploads playlist. Returns video summaries
-    with stats, sorted by most recent.
+    For a channel, uses the channel's uploads playlist. Returns compact video
+    summaries (id, title, date, duration, stats), sorted by most recent.
+    Use youtube_get_video for one video's full metadata, or details=True to get
+    description (truncated), tags and thumbnail for every listed video.
 
     Args:
         channel_id: Channel ID to list videos from
@@ -78,6 +81,9 @@ def youtube_list_videos(
         max_results: Number of videos to return. Values above 50 are served by
             paging through the playlist; pass 0 or a negative value to fetch
             every video in the playlist.
+        details: Include description, tags, thumbnail and channel per video.
+            Off by default: ten full summaries are ~25k characters, almost all
+            of it description and tags.
     """
     youtube = auth.build_youtube_service()
     target = max_results if (max_results and max_results > 0) else None
@@ -142,6 +148,10 @@ def youtube_list_videos(
         for _vv in videos_response.get("items", []):
             _summ = format_video_summary(_vv)
             _summ["playlist_item_id"] = pi_map.get(_summ.get("id"))
+            if not details:
+                for _k in ("description", "description_truncated", "description_length",
+                           "tags", "thumbnail", "channel"):
+                    _summ.pop(_k, None)
             videos.append(_summ)
     return {"videos": videos, "total": total}
 

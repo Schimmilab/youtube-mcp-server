@@ -189,3 +189,47 @@ class TestListVideosPagination:
         ids = [v["id"] for v in result["videos"]]
         assert ids == ["vid_A", "vid_B"]
         assert len(ids) == len(set(ids))
+
+
+def _make_videos_with_long_text():
+    langer_text = "Beschreibung " * 200          # ~2.600 Zeichen, wie echte Videobeschreibungen
+    def side_effect(**kwargs):
+        return MagicMock(execute=MagicMock(return_value={"items": [
+            {"id": vid,
+             "snippet": {"title": f"Title {vid}", "channelTitle": "C", "description": langer_text,
+                         "tags": [f"tag{i}" for i in range(18)],
+                         "thumbnails": {"high": {"url": "https://i.ytimg.com/x.jpg"}},
+                         "publishedAt": "2026-10-04T17:30:00Z"},
+             "statistics": {"viewCount": "5", "likeCount": "1", "commentCount": "2"},
+             "contentDetails": {"duration": "PT1M53S"}}
+            for vid in kwargs["id"].split(",")]}))
+    return side_effect
+
+
+class TestListVideosCompact:
+    """04.10.2026: 10 Videos lieferten ~25.000 Zeichen, fast alles Beschreibung + Tags.
+    Die Liste dient zum Finden (ID, Titel, Zahlen); Details holt youtube_get_video."""
+
+    def _liste(self, mock_auth, **kw):
+        from youtube_mcp.tools.channel import youtube_list_videos
+        mock_yt = MagicMock()
+        mock_auth.build_youtube_service.return_value = mock_yt
+        mock_yt.playlistItems().list.side_effect = _make_playlist_server(total=10)
+        mock_yt.videos().list.side_effect = _make_videos_with_long_text()
+        return youtube_list_videos(playlist_id="PL1", max_results=10, **kw)
+
+    @patch("youtube_mcp.tools.channel.auth")
+    @patch("youtube_mcp.tools.channel.quota")
+    def test_muss_rot_standard_ist_kompakt(self, mock_quota, mock_auth):
+        import json
+        r = self._liste(mock_auth)
+        v = r["videos"][0]
+        assert "description" not in v and "tags" not in v and "thumbnail" not in v
+        assert len(json.dumps(r)) < 3000                      # 10 Videos, nicht 25.000
+        assert {"id", "title", "published_at", "duration", "views", "comments", "playlist_item_id"} <= set(v)
+
+    @patch("youtube_mcp.tools.channel.auth")
+    @patch("youtube_mcp.tools.channel.quota")
+    def test_details_liefert_alles_wie_bisher(self, mock_quota, mock_auth):
+        v = self._liste(mock_auth, details=True)["videos"][0]
+        assert v["description"].startswith("Beschreibung") and len(v["tags"]) == 18 and v["thumbnail"]
