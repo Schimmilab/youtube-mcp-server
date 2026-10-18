@@ -47,6 +47,8 @@ def youtube_upload_video(
     privacy_status: str = "private",
     publish_at: str | None = None,
     contains_synthetic_media: bool | None = None,
+    default_language: str = "de",
+    default_audio_language: str = "de",
 ) -> dict:
     """Upload a video to YouTube.
 
@@ -62,6 +64,10 @@ def youtube_upload_video(
         publish_at: ISO 8601 datetime to schedule publishing (requires privacy_status="private")
         contains_synthetic_media: YouTube's "altered or synthetic content" disclosure
             (AI label, status.containsSyntheticMedia). True for AI music, AI avatars, etc.
+        default_language: Language of title/description (snippet.defaultLanguage). Default "de".
+        default_audio_language: Spoken language of the video (snippet.defaultAudioLanguage). Default "de".
+            Without it YouTube files API uploads as "Englisch (USA)" — the Studio upload defaults
+            only apply to uploads made in Studio (found 18.10.2026 on Arcanara Freunde).
     """
     if not os.path.exists(file_path):
         return {"error": f"File not found: {file_path}"}
@@ -75,6 +81,8 @@ def youtube_upload_video(
             "description": description[:5000],
             "tags": tags or [],
             "categoryId": category_id,
+            "defaultLanguage": default_language,
+            "defaultAudioLanguage": default_audio_language,
         },
         "status": {
             "privacyStatus": privacy_status,
@@ -103,6 +111,8 @@ def youtube_upload_video(
         "privacy": response["status"]["privacyStatus"],
         "publish_at": response["status"].get("publishAt"),
         "contains_synthetic_media": response["status"].get("containsSyntheticMedia"),
+        "default_language": response["snippet"].get("defaultLanguage"),
+        "default_audio_language": response["snippet"].get("defaultAudioLanguage"),
         "url": f"https://www.youtube.com/watch?v={response['id']}",
         "quota_cost": 1600,
     }
@@ -120,6 +130,8 @@ def youtube_update_video(
     made_for_kids: bool | None = None,
     contains_synthetic_media: bool | None = None,
     embeddable: bool | None = None,
+    default_language: str | None = None,
+    default_audio_language: str | None = None,
 ) -> dict:
     """Update metadata for an existing video.
 
@@ -136,6 +148,8 @@ def youtube_update_video(
         made_for_kids: COPPA self-declaration. Pass True/False to set selfDeclaredMadeForKids. Videos that were uploaded without this declaration cannot be published until it is set.
         contains_synthetic_media: AI label (status.containsSyntheticMedia), True/False.
         embeddable: Allow embedding on other sites.
+        default_language: Language of title/description, e.g. "de" (snippet.defaultLanguage).
+        default_audio_language: Spoken language, e.g. "de" (snippet.defaultAudioLanguage).
 
     Status fields that are not passed keep their current value (embeddable,
     publishAt, license, ...). Changing privacy away from "private" drops publishAt.
@@ -162,6 +176,10 @@ def youtube_update_video(
         snippet["tags"] = tags
     if category_id is not None:
         snippet["categoryId"] = category_id
+    if default_language is not None:
+        snippet["defaultLanguage"] = default_language
+    if default_audio_language is not None:
+        snippet["defaultAudioLanguage"] = default_audio_language
 
     body = {"id": video_id, "snippet": snippet}
 
@@ -195,6 +213,8 @@ def youtube_update_video(
         "publish_at": response_status.get("publishAt"),
         "embeddable": response_status.get("embeddable"),
         "contains_synthetic_media": response_status.get("containsSyntheticMedia"),
+        "default_language": response["snippet"].get("defaultLanguage"),
+        "default_audio_language": response["snippet"].get("defaultAudioLanguage"),
         "updated": True,
     }
 

@@ -191,6 +191,9 @@ def youtube_get_video(video_id: str) -> dict:
     # nicht "kein KI-Label". Belastbar ist nur die Antwort von upload/update.
     summary["contains_synthetic_media"] = status.get("containsSyntheticMedia")
     summary["topic_categories"] = video.get("topicDetails", {}).get("topicCategories", [])
+    snippet = video.get("snippet", {})
+    summary["default_language"] = snippet.get("defaultLanguage")
+    summary["default_audio_language"] = snippet.get("defaultAudioLanguage")
 
     return summary
 
