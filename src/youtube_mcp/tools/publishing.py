@@ -68,6 +68,8 @@ def youtube_upload_video(
         default_audio_language: Spoken language of the video (snippet.defaultAudioLanguage). Default "de".
             Without it YouTube files API uploads as "Englisch (USA)" — the Studio upload defaults
             only apply to uploads made in Studio (found 18.10.2026 on Arcanara Freunde).
+            Use the bare code "de": the API silently drops "de-DE" for defaultAudioLanguage
+            and stores "de" as "de-DE" (tested 18.10.2026).
     """
     if not os.path.exists(file_path):
         return {"error": f"File not found: {file_path}"}
