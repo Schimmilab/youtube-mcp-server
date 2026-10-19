@@ -280,6 +280,29 @@ class TestVideoLanguage:
         youtube_upload_video(file_path="/tmp/v.mp4", title="t", default_audio_language="en")
         assert mock_yt.videos().insert.call_args.kwargs["body"]["snippet"]["defaultAudioLanguage"] == "en"
 
+    @patch("youtube_mcp.tools.publishing.MediaFileUpload")
+    @patch("youtube_mcp.tools.publishing.auth")
+    @patch("youtube_mcp.tools.publishing.quota")
+    @patch("os.path.exists", return_value=True)
+    def test_upload_made_for_kids(self, mock_exists, mock_quota, mock_auth, mock_media):
+        # 19.10.2026: Der Wert war hart auf False — auf Arcanara Kinder waere jedes Video
+        # als "nicht fuer Kinder" deklariert worden. Default bleibt False (Muss-gruen),
+        # True muss im Body ankommen (Muss-rot fuer den alten Code).
+        from youtube_mcp.tools.publishing import youtube_upload_video
+
+        mock_yt = MagicMock()
+        mock_auth.build_youtube_service.return_value = mock_yt
+        mock_yt.videos().insert().execute.return_value = {
+            "id": "v", "snippet": {"title": "t"},
+            "status": {"privacyStatus": "private", "selfDeclaredMadeForKids": True}}
+        mock_yt.videos().insert.reset_mock()
+        youtube_upload_video(file_path="/tmp/v.mp4", title="t")
+        assert mock_yt.videos().insert.call_args.kwargs["body"]["status"]["selfDeclaredMadeForKids"] is False
+        mock_yt.videos().insert.reset_mock()
+        result = youtube_upload_video(file_path="/tmp/v.mp4", title="t", made_for_kids=True)
+        assert mock_yt.videos().insert.call_args.kwargs["body"]["status"]["selfDeclaredMadeForKids"] is True
+        assert result["made_for_kids"] is True
+
     @patch("youtube_mcp.tools.publishing.auth")
     @patch("youtube_mcp.tools.publishing.quota")
     def test_update_language_without_touching_status(self, mock_quota, mock_auth):

@@ -49,6 +49,7 @@ def youtube_upload_video(
     contains_synthetic_media: bool | None = None,
     default_language: str = "de",
     default_audio_language: str = "de",
+    made_for_kids: bool = False,
 ) -> dict:
     """Upload a video to YouTube.
 
@@ -70,6 +71,9 @@ def youtube_upload_video(
             only apply to uploads made in Studio (found 18.10.2026 on Arcanara Freunde).
             Use the bare code "de": the API silently drops "de-DE" for defaultAudioLanguage
             and stores "de" as "de-DE" (tested 18.10.2026).
+        made_for_kids: COPPA self-declaration (status.selfDeclaredMadeForKids). True for every
+            upload to a "made for kids" channel such as Arcanara Kinder — the per-video value
+            overrides the channel default, so a hardcoded False would misdeclare them.
     """
     if not os.path.exists(file_path):
         return {"error": f"File not found: {file_path}"}
@@ -88,7 +92,7 @@ def youtube_upload_video(
         },
         "status": {
             "privacyStatus": privacy_status,
-            "selfDeclaredMadeForKids": False,
+            "selfDeclaredMadeForKids": made_for_kids,
         },
     }
 
@@ -113,6 +117,7 @@ def youtube_upload_video(
         "privacy": response["status"]["privacyStatus"],
         "publish_at": response["status"].get("publishAt"),
         "contains_synthetic_media": response["status"].get("containsSyntheticMedia"),
+        "made_for_kids": response["status"].get("selfDeclaredMadeForKids"),
         "default_language": response["snippet"].get("defaultLanguage"),
         "default_audio_language": response["snippet"].get("defaultAudioLanguage"),
         "url": f"https://www.youtube.com/watch?v={response['id']}",
