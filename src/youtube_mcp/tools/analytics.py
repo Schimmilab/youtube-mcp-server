@@ -72,8 +72,12 @@ def youtube_analytics_overview(
 ) -> dict:
     """Get channel-level analytics summary.
 
-    Returns views, watch time, subscribers gained/lost, likes, comments,
-    and shares for the date range.
+    Returns views, engagedViews, watch time, subscribers gained/lost, likes,
+    comments, and shares for the date range.
+
+    YouTube now counts every start as a view (no minimum watch time);
+    ``engagedViews`` continues the old, stricter count and is the better
+    metric for "does the format hold?".
 
     Args:
         start_date: Start date (YYYY-MM-DD). Defaults to 28 days ago.
@@ -81,7 +85,7 @@ def youtube_analytics_overview(
     """
     return _run_analytics_query(
         metrics=(
-            "views,estimatedMinutesWatched,averageViewDuration,"
+            "views,engagedViews,estimatedMinutesWatched,averageViewDuration,"
             "subscribersGained,subscribersLost,"
             "likes,comments,shares"
         ),
@@ -107,7 +111,7 @@ def youtube_analytics_top_videos(
     """
     return _run_analytics_query(
         metrics=(
-            "views,estimatedMinutesWatched,averageViewDuration,"
+            "views,engagedViews,estimatedMinutesWatched,averageViewDuration,"
             "likes,comments,shares"
         ),
         dimensions="video",
@@ -136,7 +140,7 @@ def youtube_analytics_top_shorts(
     """
     return _run_analytics_query(
         metrics=(
-            "views,estimatedMinutesWatched,averageViewDuration,"
+            "views,engagedViews,estimatedMinutesWatched,averageViewDuration,"
             "likes,comments,shares"
         ),
         dimensions="video",
@@ -165,7 +169,7 @@ def youtube_analytics_video_detail(
     """
     return _run_analytics_query(
         metrics=(
-            "views,estimatedMinutesWatched,averageViewDuration,"
+            "views,engagedViews,estimatedMinutesWatched,averageViewDuration,"
             "likes,comments,shares,"
             "subscribersGained,subscribersLost"
         ),
@@ -198,6 +202,43 @@ def youtube_analytics_traffic_sources(
         dimensions="insightTrafficSourceType",
         filters=filters,
         sort="-views",
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+
+@mcp.tool()
+def youtube_analytics_traffic_source_detail(
+    source_type: str = "RELATED_VIDEO",
+    video_id: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    max_results: int = 25,
+) -> dict:
+    """Get the detail behind ONE traffic source type — e.g. next to WHICH videos
+    your content is suggested (RELATED_VIDEO), which search terms found it
+    (YT_SEARCH), which external sites (EXT_URL) or playlists (PLAYLIST).
+
+    The API requires a filter on exactly one insightTrafficSourceType and
+    allows at most 25 rows, sorted by views.
+
+    Args:
+        source_type: insightTrafficSourceType, e.g. RELATED_VIDEO, YT_SEARCH,
+            EXT_URL, PLAYLIST, YT_CHANNEL, ADVERTISING, NOTIFICATION, SHORTS.
+        video_id: Optional video ID to restrict to one video.
+        start_date: Start date (YYYY-MM-DD). Defaults to 28 days ago.
+        end_date: End date (YYYY-MM-DD). Defaults to today.
+        max_results: Number of rows (1–25).
+    """
+    filters = f"insightTrafficSourceType=={source_type.upper()}"
+    if video_id:
+        filters = f"video=={video_id};" + filters
+    return _run_analytics_query(
+        metrics="views,estimatedMinutesWatched",
+        dimensions="insightTrafficSourceDetail",
+        filters=filters,
+        sort="-views",
+        max_results=max(1, min(max_results, 25)),
         start_date=start_date,
         end_date=end_date,
     )

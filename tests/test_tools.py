@@ -188,6 +188,42 @@ class TestAnalytics:
         assert result["results"][0]["estimatedMinutesWatched"] == 12000
 
     @patch("youtube_mcp.tools.analytics.auth")
+    def test_overview_and_detail_request_engaged_views(self, mock_auth):
+        """engagedViews must be in the metrics string (regression for the 2026-08 counting change)."""
+        from youtube_mcp.tools.analytics import (
+            youtube_analytics_overview, youtube_analytics_video_detail,
+            youtube_analytics_top_videos, youtube_analytics_top_shorts,
+        )
+        mock_analytics = MagicMock()
+        mock_auth.build_youtube_analytics_service.return_value = mock_analytics
+        mock_analytics.reports.return_value.query.return_value.execute.return_value = {"columnHeaders": [], "rows": []}
+        for fn, args in ((youtube_analytics_overview, ()), (youtube_analytics_video_detail, ("vid",)),
+                         (youtube_analytics_top_videos, ()), (youtube_analytics_top_shorts, ())):
+            mock_analytics.reports.return_value.query.reset_mock()
+            fn(*args)
+            metrics = mock_analytics.reports.return_value.query.call_args.kwargs["metrics"]
+            assert "engagedViews" in metrics.split(","), fn.__name__
+
+    @patch("youtube_mcp.tools.analytics.auth")
+    def test_traffic_source_detail_filters_and_caps(self, mock_auth):
+        from youtube_mcp.tools.analytics import youtube_analytics_traffic_source_detail
+        mock_analytics = MagicMock()
+        mock_auth.build_youtube_analytics_service.return_value = mock_analytics
+        q = mock_analytics.reports.return_value.query
+        q.return_value.execute.return_value = {
+            "columnHeaders": [{"name": "insightTrafficSourceDetail"}, {"name": "views"}, {"name": "estimatedMinutesWatched"}],
+            "rows": [["rQHYGHNgETY", 28, 40]],
+        }
+        r = youtube_analytics_traffic_source_detail("related_video", video_id="abc", max_results=99)
+        kw = q.call_args.kwargs
+        assert kw["dimensions"] == "insightTrafficSourceDetail"
+        assert kw["filters"] == "video==abc;insightTrafficSourceType==RELATED_VIDEO"
+        assert kw["maxResults"] == 25  # API limit, a larger value would be rejected
+        assert r["results"][0]["insightTrafficSourceDetail"] == "rQHYGHNgETY"
+        youtube_analytics_traffic_source_detail()
+        assert q.call_args.kwargs["filters"] == "insightTrafficSourceType==RELATED_VIDEO"
+
+    @patch("youtube_mcp.tools.analytics.auth")
     def test_analytics_top_shorts(self, mock_auth):
         from youtube_mcp.tools.analytics import youtube_analytics_top_shorts
 

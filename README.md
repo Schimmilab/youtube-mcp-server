@@ -2,7 +2,7 @@
 
 A comprehensive [Model Context Protocol](https://modelcontextprotocol.io/) server for the YouTube Data API v3, Analytics API, and Reporting API. Gives AI assistants full access to your YouTube channel — analytics, video management, comments, and more.
 
-**40 tools** covering:
+**48 tools** covering:
 - Channel & video data
 - YouTube Analytics (performance, audience, retention, revenue)
 - Video publishing & playlist management
@@ -32,7 +32,7 @@ Existing YouTube MCP servers focus narrowly on transcript scraping or basic sear
 | SEO / trending / suggestions | Yes | No |
 | Transcript extraction | Yes | Yes |
 | Quota tracking | Yes | No |
-| Total tools | 40 | 1-5 |
+| Total tools | 48 | 1-5 |
 
 ## Prerequisites
 
@@ -173,16 +173,17 @@ On first use, the server will open a browser window for Google OAuth consent. Si
 
 | Tool | Description |
 |------|-------------|
-| `youtube_analytics_overview` | Channel summary (views, watch time, subs, likes) |
-| `youtube_analytics_top_videos` | Top videos by views (excludes Shorts) |
+| `youtube_analytics_overview` | Channel summary (views, **engagedViews**, watch time, subs, likes) |
+| `youtube_analytics_top_videos` | Top videos by views incl. engagedViews (excludes Shorts) |
 | `youtube_analytics_top_shorts` | Top Shorts by views |
-| `youtube_analytics_video_detail` | Daily metrics for a specific video |
+| `youtube_analytics_video_detail` | Daily metrics incl. engagedViews for a specific video |
 
-### Analytics — Audience (3 tools)
+### Analytics — Audience (4 tools)
 
 | Tool | Description |
 |------|-------------|
 | `youtube_analytics_traffic_sources` | Traffic source breakdown |
+| `youtube_analytics_traffic_source_detail` | Detail behind one source type, e.g. next to which videos you are suggested (RELATED_VIDEO), search terms (YT_SEARCH), external sites (EXT_URL); max 25 rows |
 | `youtube_analytics_demographics` | Age and gender breakdown |
 | `youtube_analytics_geography` | Views by country |
 
